@@ -1,0 +1,178 @@
+Content objects/nodes sorting template operators extension for eZ Publish
+=========================================================================
+Author: Alex Kozeka <kozeka.alex@gmail.com>
+Date: July 2011
+
+
+An extension aiming to perform server-side content objects/nodes sorting.
+May be helpful when it is required to do fine-tuning after fetch operator which could not do the job.
+Various sorting coditions can be applied.
+
+
+License
+=======
+GNU General Public License v2.0
+
+
+Requirements
+============
+- eZ Publish 4.0+ (tested with 4.3).
+
+Installation
+============
+1) Copy sortobjectsoperators directory to eZ Publish extension directory.
+
+2) Generate autoloads using commands:
+cd ezp_dir
+php bin/php/ezpgenerateautoloads.php
+
+3) Activate extension in your site.ini.append.php
+
+
+Description and usage
+=====================
+Extension adds template operators:
+
+1) get_sorted_objects( $unsorted_nodes_or_objects, $sort_conditions )
+
+Sorts nodes/objects using specified sort_conditions and returns sorted objects.
+$unsorted_nodes_or_objects: An array returned from fetch or like that. Elements are content objects or nodes.
+$sort_conditions: An array of sort conditions.
+Each element is SORT_ORDER specificator + at least one SORT_SOURCE specificator.
+See examples for common usage scenarios.
+
+$sort_conditions = array(
+    array(
+        SORT_ORDER: {true(): ASC | false(): DESC},
+        SORT_SOURCE: {
+            'parent': object's parent node |
+            array( 'attribute': object's attribute, 'ATTRIBUTE_IDENTIFIER': attribute name ) |
+            array( 'system_attribute': object's system attribute, 'ATTRIBUTE_IDENTIFIER': attribute name ) |
+            array( 'relation_attribute': object's relation attribute, 'ATTRIBUTE_IDENTIFIER': attribute name )
+        }
+    ),
+    ...
+)
+
+2) get_unique_sorted_objects( $unsorted_nodes_or_objects, $sort_conditions )
+
+Sorts nodes/objects using specified sort_conditions and returns only unique (by object id) sorted objects.
+Parameters are the same as for get_sorted_objects operator.
+
+3) get_objects_from_nodes( $nodes_or_objects )
+
+Returns objects from mixed list of nodes/objects
+
+
+Examples
+========
+
+Assume content classes (significant fields only):
+
+Folder
+- name [text line]
+- location [object relation, allowed classes: Location]
+
+Article
+- title [text line]
+- locations [object relations, allowed classes: Location]
+
+Location
+- title [text line]
+
+Content tree structure:
+- Articles are grouped by Folders.
+- Folders are under one parent Folder.
+- Each article can have 0/many related Locations.
+- Each Folder can have 0 or 1 related Location.
+
+Template code:
+
+1) Sort node list by object's attribute title ASC
+
+{def $unsorted_nodes = fetch( 'content', 'list', hash(
+    'parent_node_id', PARENT_FOLDER_NODE_ID,
+    'class_filter_type', 'include',
+    'class_filter_array', array( 'article' )
+))}
+{def $sorted_objects = get_sorted_objects( $unsorted_nodes, array(
+    array(
+        true(),
+        array( 'attribute', 'title' )
+    )
+))}
+
+
+2) Sort node list by parent object's name ASC + object's publish date DESC
+
+{def $unsorted_nodes = fetch( 'content', 'list', hash(
+    'parent_node_id', PARENT_FOLDER_FOR_FOLDERS_NODE_ID,
+    'class_filter_type', 'include',
+    'class_filter_array', array( 'article' ),
+    'depth', 2
+))}
+{def $sorted_objects = get_sorted_objects( $unsorted_nodes, array(
+    array(
+        true(),
+        'parent',
+        array( 'system_attribute', 'name' )
+    ),
+    array(
+        false(),
+        array( 'system_attribute', 'published' )
+    )
+))}
+
+
+3) Sort node list by object's related object title ASC + object's name ASC
+
+{def $unsorted_nodes = fetch( 'content', 'list', hash(
+    'parent_node_id', PARENT_FOLDER_FOR_FOLDERS_NODE_ID,
+    'class_filter_type', 'include',
+    'class_filter_array', array( 'article' ),
+    'depth', 2
+))}
+{def $sorted_objects = get_sorted_objects( $unsorted_nodes, array(
+    array(
+        true(),
+        array( 'relation_attribute', 'locations' ),
+        array( 'attribute', 'title' )
+    ),
+    array(
+        true(),
+        array( 'system_attribute', 'name' )
+    )
+))}
+
+
+4) Sort node list by parent object's related object's title ASC + parent object's name ASC + object's name ASC
+
+{def $unsorted_nodes = fetch( 'content', 'list', hash(
+    'parent_node_id', PARENT_FOLDER_FOR_FOLDERS_NODE_ID,
+    'class_filter_type', 'include',
+    'class_filter_array', array( 'article' ),
+    'depth', 2
+))}
+{def $sorted_objects = get_sorted_objects( $unsorted_nodes, array(
+    array(
+        true(),
+        'parent',
+        array( 'relation_attribute', 'location' ),
+        array( 'attribute', 'title' )
+    ),
+    array(
+        true(),
+        'parent',
+        array( 'system_attribute', 'name' )
+    ),
+    array(
+        true(),
+        array( 'system_attribute', 'name' )
+    )
+))}
+
+
+Known issues
+============
+- Attributes and system attributes should exist. No checks performed about that.
+- Sorting is performed correctly for textual attributes only.
